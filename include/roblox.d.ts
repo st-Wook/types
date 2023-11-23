@@ -2648,9 +2648,14 @@ interface QFont {}
 interface QDir {}
 
 // built-in globals
+/** A reference to the DataModel, which is the root Instance of Roblox's parent/child hierarchy. */
 declare const game: DataModel;
-declare const script: LuaSourceContainer;
+/** A table that is shared across all scripts that share the same execution context level. This serves the exact same purpose as _G. */
 declare const shared: object;
+/** A reference to the script object that is executing the code you are writing. It can be either a Script, a LocalScript, or a ModuleScript (and sometimes a Class.CoreScript). This variable is not available when executing code from Roblox Studio's command bar. */
+declare const script: LuaSourceContainer;
+/** A reference to the Workspace service, which contains all of the physical components of a Roblox world. */
+declare const workspace: Workspace;
 
 type DelayedCallback =
 	/**
