@@ -21,7 +21,7 @@ declare function error(message?: unknown, level?: number): never;
 declare function getfenv(stack: number): { script: LuaSourceContainer };
 
 /** Returns the metatable of the specified object if it has one, otherwise returns nil. If the object does have a metatable, but the metatable has a __metatable field set, the value of __metatable will be returned instead. */
-declare function getmetatable(object: object): unknown;
+declare function getmetatable<T>(object: T): LuaMetatable<T> | undefined;
 
 /** Prints a list of parameters to console. */
 declare function print(...params: Array<unknown>): void;
@@ -30,16 +30,16 @@ declare function print(...params: Array<unknown>): void;
 declare function rawequal(v1: unknown, v2: unknown): boolean;
 
 /** Gets the real value of table[index], without invoking any metamethod. */
-declare function rawget(t: unknown, index: unknown): unknown;
+declare function rawget<T extends object, K extends keyof T>(table: T, index: K): T[K];
 
 /** Sets the real value of table[index] to a given value, without invoking any metamethod. */
-declare function rawset(t: unknown, index: unknown, value: unknown): void;
+declare function rawset<T extends object, K extends keyof T>(table: T, index: K, value: T[K]): T;
 
 /** Returns all arguments after argument number index. */
-declare function select(index: number, ...args: Array<unknown>): LuaTuple<Array<unknown>>;
+declare function select<T>(index: number, ...args: Array<T>): LuaTuple<Array<T>>;
 
 /** Returns the total number of arguments that were passed after the cmd argument. */
-declare function select(cmd: "#", ...args: Array<unknown>): number;
+declare function select<T>(cmd: "#", ...args: Array<T>): number;
 
 /** Attempts to convert the arg into a number with a specified base to interpret the value in. If it cannot be converted, this function returns nil. The base may be any integer between 2 and 36, inclusive. In bases above 10, the letter 'A' (in either upper or lower case) represents 10, 'B' represents 11, and so forth, with 'Z' representing 35. In base 10 (the default), the number may have a decimal part, as well as an optional exponent part. In other bases, only unsigned integers are accepted. */
 declare function tonumber(arg: unknown, base?: number): number | undefined;
@@ -79,9 +79,12 @@ declare function xpcall<T extends Array<any>, U, V>(
 	...args: T
 ): LuaTuple<[true, U] | [false, V]>;
 
-interface LuaMetatable<T> {
-	__index?: (self: T, index: unknown) => void;
-	__newindex?: (self: T, index: unknown, value: unknown) => void;
+interface LuaMetatable<
+	T,
+	TIndex extends ((self: T, key: unknown) => unknown) | undefined = ((self: T, key: unknown) => unknown) | undefined,
+> {
+	__index?: TIndex;
+	__newindex?: (self: T, key: unknown, value: unknown) => void;
 	__add?: (self: T, other: T) => T;
 	__sub?: (self: T, other: T) => T;
 	__mul?: (self: T, other: T) => T;
@@ -101,7 +104,13 @@ interface LuaMetatable<T> {
 }
 
 /** Sets the metatable for the given table. If `metatable` is nil, the metatable of the given table is removed. If the original metatable has a "__metatable" field, this will raise an error. This function returns the table t, which was passed to the function. */
-declare function setmetatable<T extends object>(object: T, metatable: LuaMetatable<T> | undefined): T;
+declare function setmetatable<
+	T extends object,
+	TIndex extends ((self: T, key: unknown) => unknown) | undefined = undefined,
+>(
+	table: T,
+	metatable?: LuaMetatable<T, TIndex>,
+): TIndex extends (self: T, key: infer TKey) => infer TValue ? T & { [K in TKey & string]: TValue } : T;
 
 /** An object the represents a date or time. Used with `os.date` and `os.time`. */
 interface DateTable {
@@ -388,6 +397,7 @@ declare namespace string {
 	function unpack(fmt: string, s: string, pos?: number): LuaTuple<Array<unknown>>;
 
 	/** Returns the internal numerical codes of the characters `s[i]`, `s[i+1]`, `...`, `s[j]`. The default value for i is 1; the default value for j is i. These indices are corrected following the same rules of function string.sub. */
+	function byte(str: string, i?: number): number;
 	function byte(str: string, i?: number, j?: number): LuaTuple<Array<number>>;
 
 	/** Looks for the first match of pattern in the string s. If it finds a match, then find returns the indices of s where this occurrence starts and ends, as well as any matches after that. Otherwise, it returns nil. A third, optional numerical argument init specifies where to start the search; its default value is 1 and can be negative. A value of true as a fourth, optional argument plain turns off the pattern matching facilities, so the function does a plain "find substring" operation, with no characters in the pattern being considered "magic". Note that if `plain` is given, then `init` must be given as well. */
@@ -730,7 +740,10 @@ declare namespace coroutine {
 	function create(f: Callback): thread;
 
 	/** Starts or continues the execution of coroutine co. The first time you resume a coroutine, it starts running its body. The values val1, ... are passed as the arguments to the body function. If the coroutine has yielded, resume restarts it; the values val1, ... are passed as the results from the yield. If the coroutine runs without any errors, resume returns true plus any values passed to yield (if the coroutine yields) or any values returned by the body function (if the coroutine terminates). If there is any error, resume returns false plus the error message. */
-	function resume(co: thread, ...params: Array<unknown>): LuaTuple<[success: boolean, ...result: Array<unknown>]>;
+	function resume(
+		co: thread,
+		...params: Array<unknown>
+	): LuaTuple<[success: true, ...Array<unknown>] | [success: false, errorValue: string]>;
 
 	/** Returns the running coroutine. */
 	function running(): thread;
@@ -739,7 +752,7 @@ declare namespace coroutine {
 	function status(co: thread): "running" | "suspended" | "normal" | "dead";
 
 	/** Creates a new coroutine, with body f. f must be a Lua function. Returns a function that resumes the coroutine each time it is called. Any arguments passed to the function behave as the extra arguments to resume. Returns the same values returned by resume, except the first boolean. In case of error, propagates the error. */
-	function wrap<T extends Callback>(f: T): T;
+	function wrap<T extends Array<unknown>>(f: (...args: T) => unknown): (...args: T) => LuaTuple<Array<unknown>>;
 
 	/** Suspends the execution of the calling coroutine. Any arguments to yield are passed as extra results to resume. */
 	function yield(...params: Array<unknown>): LuaTuple<Array<unknown>>;
@@ -800,15 +813,14 @@ declare function next<K, V>(object: ReadonlyMap<K, V>, index?: K): LuaTuple<[K, 
 declare function next<T extends object>(object: T, index?: keyof T): LuaTuple<[keyof T, T[keyof T]]>;
 declare function next(object: object, index?: unknown): LuaTuple<[unknown, unknown]>;
 
-declare function pairs<T>(object: ReadonlyArray<T>): IterableFunction<LuaTuple<[number, Exclude<T, undefined>]>>;
+declare function pairs<T>(object: ReadonlyArray<T>): IterableFunction<LuaTuple<[number, NonNullable<T>]>>;
 declare function pairs<T>(object: ReadonlySet<T>): IterableFunction<LuaTuple<[T, true]>>;
-declare function pairs<K, V>(
-	object: ReadonlyMap<K, V>,
-): IterableFunction<LuaTuple<[Exclude<K, undefined>, Exclude<V, undefined>]>>;
+declare function pairs<K, V>(object: ReadonlyMap<K, V>): IterableFunction<LuaTuple<[NonNullable<K>, NonNullable<V>]>>;
 declare function pairs<T extends object>(
 	object: T,
 ): keyof T extends never
 	? IterableFunction<LuaTuple<[unknown, defined]>>
-	: IterableFunction<LuaTuple<[keyof T, Exclude<T[keyof T], undefined>]>>;
+	: IterableFunction<LuaTuple<[keyof T, NonNullable<T[keyof T]>]>>;
 
-declare function ipairs<T>(object: ReadonlyArray<T>): IterableFunction<LuaTuple<[number, Exclude<T, undefined>]>>;
+declare function ipairs<T>(t: Record<number, T>): IterableFunction<LuaTuple<[number, NonNullable<T>]>>;
+declare function ipairs<T>(t: ReadonlyArray<T>): IterableFunction<LuaTuple<[number, NonNullable<T>]>>;
