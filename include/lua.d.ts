@@ -109,7 +109,7 @@ declare function setmetatable<
 	TIndex extends ((self: T, key: unknown) => unknown) | undefined = undefined,
 >(
 	table: T,
-	metatable?: LuaMetatable<T, TIndex>,
+	metatable: LuaMetatable<T, TIndex> | undefined,
 ): TIndex extends (self: T, key: infer TKey) => infer TValue ? T & { [K in TKey & string]: TValue } : T;
 
 /** An object the represents a date or time. Used with `os.date` and `os.time`. */
